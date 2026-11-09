@@ -1,0 +1,38 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local config（含所有备份副本，避免真实 Key 被误提交）
+.env
+.env.*
+!.env.example
+
+# Data / artifacts
+data/
+*.db
+tests/eval/corpus.json
+tests/eval/last_run.json
+.tmp-test-storage/
+*.log
+
+# 本地 AI 助手工作区数据（记忆/日志，不进仓库）
+.workbuddy/
+
+# Windows 重定向残留
+nul
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

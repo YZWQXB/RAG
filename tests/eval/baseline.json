@@ -1,0 +1,10 @@
+{
+  "recall@5": 1.0,
+  "mrr": 0.9412,
+  "no_answer_accuracy": 1.0,
+  "samples": 21,
+  "note": "由 scripts.eval 生成，记录当时的分块与检索参数",
+  "chunk_size_chars": 600,
+  "top_dense": 40,
+  "top_final": 6
+}

@@ -1,0 +1,62 @@
+[project]
+name = "rag-saas"
+version = "0.1.0"
+description = "Multi-tenant RAG knowledge base system"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115,<0.116",
+  "uvicorn[standard]>=0.32,<0.33",
+  "sqlalchemy[asyncio]>=2.0.36,<2.1",
+  "asyncpg>=0.30,<0.31",
+  "alembic>=1.14,<1.15",
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.6,<3",
+  "pgvector>=0.3.6,<0.4",
+  "pyjwt>=2.9,<3",
+  "argon2-cffi>=23.1,<24",
+  "structlog>=24.4,<25",
+  "redis>=5.2,<6",
+  "arq>=0.26,<0.27",
+  "httpx>=0.27,<0.28",
+  "boto3>=1.35,<2",
+  "pymupdf>=1.24,<2",
+  "python-docx>=1.1,<2",
+  "markdown-it-py>=3.0,<4",
+  "tiktoken>=0.8,<0.9",
+  "python-multipart>=0.0.12,<0.1",
+  # Windows 没有系统 tzdata，zoneinfo 需要它才能解析 Asia/Shanghai
+  "tzdata>=2024.1",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=6.0",
+  "ruff>=0.8",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# 全局 async engine 的连接池绑定在事件循环上，必须让所有用例共享同一个 loop，
+# 否则连接池跨 loop 复用会触发 "Event loop is closed" / 'NoneType' has no attribute 'send'。
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["*/migrations/*"]

@@ -1,0 +1,21 @@
+{"query": "年假有多少天", "relevant_contains": ["5 天年假"], "type": "fact"}
+{"query": "工作满三年后年假多少天", "relevant_contains": ["10 天"], "type": "fact"}
+{"query": "年假需要提前多久申请", "relevant_contains": ["三个工作日"], "type": "fact"}
+{"query": "报销的提交时限是多少天", "relevant_contains": ["30 天内提交"], "type": "fact"}
+{"query": "普通商品几天内可以无理由退货", "relevant_contains": ["7 天内可无理由退货"], "type": "fact"}
+{"query": "整机保修期多久", "relevant_contains": ["整机保修期为 12 个月"], "type": "fact"}
+{"query": "主要部件保修期多久", "relevant_contains": ["主要部件保修期为 24 个月"], "type": "fact"}
+{"query": "SKU-8823 的尺寸是多少", "relevant_contains": ["SKU-8823"], "type": "fact"}
+{"query": "指示灯红色常亮代表什么", "relevant_contains": ["红色常亮表示硬件故障"], "type": "fact"}
+{"query": "设备的工作温度范围", "relevant_contains": ["5℃ 至 40℃"], "type": "fact"}
+{"query": "质量问题的退货运费谁承担", "relevant_contains": ["往返运费由公司承担"], "type": "compare"}
+{"query": "哪些商品不支持无理由退货", "relevant_contains": ["不支持无理由退货"], "type": "compare"}
+{"query": "人为损坏维修怎么收费", "relevant_contains": ["按成本价收取维修费用"], "type": "compare"}
+{"query": "维修后保修期如何计算", "relevant_contains": ["保修期顺延 30 天"], "type": "compare"}
+{"query": "售后申请最晚什么时候提交", "relevant_contains": ["30 天内可申请售后"], "type": "cross"}
+{"query": "设备启动失败怎么处理", "relevant_contains": ["保护模式"], "type": "cross"}
+{"query": "公司年假和售后保修是同一个制度吗", "relevant_contains": ["年假"], "type": "cross"}
+{"query": "火星基地的差旅报销标准是多少", "relevant_contains": [], "type": "no_answer"}
+{"query": "公司的股票期权如何行权", "relevant_contains": [], "type": "no_answer"}
+{"query": "竞品的市场占有率是多少", "relevant_contains": [], "type": "no_answer"}
+{"query": "明年公司的营收目标", "relevant_contains": [], "type": "no_answer"}
