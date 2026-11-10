@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 import httpx
 
 from app.core.config import settings
+from app.core.http import get_http_client
 from app.core.logging import get_logger
 from app.providers.llm.base import LLMDelta, LLMError
 
@@ -32,34 +33,35 @@ class OpenAICompatLLM:
         }
         timeout = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream(
-                    "POST",
-                    f"{self.base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=payload,
-                ) as response:
-                    if response.status_code != 200:
-                        await response.aread()
-                        raise LLMError(f"上游返回 {response.status_code}")
-                    async for line in response.aiter_lines():
-                        if not line or not line.startswith("data:"):
-                            continue
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
-                        except json.JSONDecodeError:
-                            continue
-                        choices = chunk.get("choices") or []
-                        if not choices:
-                            continue
-                        delta = choices[0].get("delta") or {}
-                        text = delta.get("content") or ""
-                        finish = choices[0].get("finish_reason")
-                        if text or finish:
-                            yield LLMDelta(text=text, finish_reason=finish)
+            client = get_http_client()
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=timeout,
+            ) as response:
+                if response.status_code != 200:
+                    await response.aread()
+                    raise LLMError(f"上游返回 {response.status_code}")
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    text = delta.get("content") or ""
+                    finish = choices[0].get("finish_reason")
+                    if text or finish:
+                        yield LLMDelta(text=text, finish_reason=finish)
         except httpx.TimeoutException as exc:
             raise LLMError("生成超时") from exc
         except httpx.HTTPError as exc:

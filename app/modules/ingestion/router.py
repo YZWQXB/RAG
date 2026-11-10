@@ -6,7 +6,12 @@ from fastapi import APIRouter, File, Query, Response, UploadFile, status
 
 from app.api.v1.deps import CurrentPrincipal, DbSession
 from app.modules.ingestion import service
-from app.modules.ingestion.schemas import DocumentListOut, DocumentOut, UploadOut
+from app.modules.ingestion.schemas import (
+    ChunkSourceOut,
+    DocumentListOut,
+    DocumentOut,
+    UploadOut,
+)
 
 router = APIRouter(tags=["documents"])
 
@@ -65,3 +70,10 @@ async def retry_document(
 )
 async def delete_document(document_id: uuid.UUID, principal: CurrentPrincipal, session: DbSession):
     await service.delete_document(session, principal, document_id)
+
+
+@router.get("/chunks/{chunk_id}", response_model=ChunkSourceOut)
+async def get_chunk_source(
+    chunk_id: uuid.UUID, principal: CurrentPrincipal, session: DbSession
+) -> ChunkSourceOut:
+    return await service.get_chunk_source(session, principal, chunk_id)

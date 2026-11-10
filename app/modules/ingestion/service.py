@@ -20,7 +20,7 @@ from app.modules.ingestion.models import (
     IngestionJob,
     OutboxEvent,
 )
-from app.modules.ingestion.schemas import DocumentOut, UploadOut
+from app.modules.ingestion.schemas import ChunkSourceOut, DocumentOut, UploadOut
 from app.modules.quota.service import assert_quota, record_usage
 from app.providers.storage import get_storage
 from app.providers.storage.base import doc_key
@@ -335,3 +335,33 @@ async def delete_document(
             )
         )
     await session.flush()
+
+
+async def get_chunk_source(
+    session: AsyncSession, principal: Principal, chunk_id: uuid.UUID
+) -> ChunkSourceOut:
+    """取分块原文，供前端点击引用时定位。
+
+    先靠 RLS 挡跨租户（查不到即 404，不泄露存在性），再按 kb 权限挡同租户越权。
+    """
+    chunk = await session.get(Chunk, chunk_id)
+    if chunk is None:
+        raise NotFoundError()
+
+    await require_kb_permission(session, principal, chunk.kb_id, Action.READ)
+
+    document = await session.get(Document, chunk.document_id)
+    if document is None or document.deleted_at is not None:
+        raise NotFoundError()
+
+    return ChunkSourceOut(
+        id=chunk.id,
+        document_id=chunk.document_id,
+        kb_id=chunk.kb_id,
+        title=document.title,
+        chunk_index=chunk.chunk_index,
+        heading_path=chunk.heading_path,
+        page_from=chunk.page_from,
+        page_to=chunk.page_to,
+        content=chunk.content,
+    )

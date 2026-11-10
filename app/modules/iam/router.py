@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Response, status
 
 from app.api.v1.deps import CurrentPrincipal, DbSession
+from app.modules.audit import service as audit
 from app.modules.iam import member_service
 from app.modules.knowledge.schemas import MemberIn, MemberOut, MemberPatch
 
@@ -20,14 +21,33 @@ async def list_members(principal: CurrentPrincipal, session: DbSession) -> list[
 async def add_member(
     payload: MemberIn, principal: CurrentPrincipal, session: DbSession
 ) -> MemberOut:
-    return await member_service.add_member(session, principal, payload.email, payload.role)
+    member = await member_service.add_member(session, principal, payload.email, payload.role)
+    # 成员变更是最需要追溯的权限事件之一
+    await audit.record(
+        session,
+        principal,
+        "member.add",
+        target_type="user",
+        target_id=member.user_id,
+        detail={"email": payload.email, "role": payload.role},
+    )
+    return member
 
 
 @router.patch("/{user_id}")
 async def update_member(
     user_id: uuid.UUID, payload: MemberPatch, principal: CurrentPrincipal, session: DbSession
 ) -> MemberOut:
-    return await member_service.update_member_role(session, principal, user_id, payload.role)
+    member = await member_service.update_member_role(session, principal, user_id, payload.role)
+    await audit.record(
+        session,
+        principal,
+        "member.update",
+        target_type="user",
+        target_id=user_id,
+        detail={"role": payload.role},
+    )
+    return member
 
 
 @router.delete(
@@ -38,3 +58,10 @@ async def update_member(
 )
 async def remove_member(user_id: uuid.UUID, principal: CurrentPrincipal, session: DbSession):
     await member_service.remove_member(session, principal, user_id)
+    await audit.record(
+        session,
+        principal,
+        "member.remove",
+        target_type="user",
+        target_id=user_id,
+    )

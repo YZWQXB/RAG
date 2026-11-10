@@ -24,8 +24,16 @@ def validate_email(email: str) -> str:
 
 
 def validate_password(password: str) -> str:
+    """注册口令的最低要求。
+
+    只拦最差的一档：长度、字母 + 数字、字符多样性。
+    不做复杂度堆砌（大小写符号各一）——那只会把用户逼去写 "Passw0rd!" 这类
+    到处都能猜到的口令，真正的防线是登录限流与后续的 MFA。
+    """
     if len(password) < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
         raise BadRequestError("密码至少 8 位，且需同时包含字母和数字", code="WEAK_PASSWORD")
+    if len(set(password)) < 4:
+        raise BadRequestError("密码过于简单，请使用更多不同的字符", code="WEAK_PASSWORD")
     return password
 
 

@@ -72,12 +72,14 @@ async def test_apply_unknown_mode_is_rejected(env_file):
 async def test_offline_is_refused_outside_local_env(env_file, monkeypatch):
     monkeypatch.setattr(mode, "_clear_query_cache", _noop_clear)
     monkeypatch.setattr(mode.settings, "env", "production")
+    # 显式给定基线：settings 是进程级单例，前面的用例可能已把 provider 改成 fake
+    monkeypatch.setattr(mode.settings, "llm_provider", "api")
 
     with pytest.raises(mode.ModeNotAllowedError):
         await mode.apply_mode("offline", env_path=env_file)
 
     # 拒绝必须发生在任何副作用之前：provider 不能被改掉
-    assert mode.settings.llm_provider != "fake"
+    assert mode.settings.llm_provider == "api"
 
 
 async def test_switch_preserves_api_key_on_disk(env_file, monkeypatch):

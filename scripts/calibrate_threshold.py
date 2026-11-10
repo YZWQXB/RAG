@@ -62,6 +62,11 @@ async def _eval_principal() -> tuple:
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--write", action="store_true")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="CI 用：分离度不足或建议值与生效阈值偏离过大时非零退出",
+    )
     args = parser.parse_args()
 
     if not CORPUS.exists():
@@ -148,6 +153,28 @@ async def main() -> None:
         f"[suggest] threshold={best['threshold']} "
         f"accuracy={best['accuracy']} (当前 {settings.retrieval_no_answer_threshold})"
     )
+
+    if args.check:
+        effective = (
+            settings.retrieval_no_answer_threshold_fake
+            if settings.embedding_provider == "fake"
+            else settings.retrieval_no_answer_threshold
+        )
+        drift = abs(best["threshold"] - effective)
+        print(
+            f"[check] accuracy={best['accuracy']} suggested={best['threshold']} "
+            f"effective={effective} drift={round(drift, 3)}"
+        )
+        problems: list[str] = []
+        if best["accuracy"] < 0.85:
+            problems.append(f"分离度不足：accuracy={best['accuracy']} < 0.85")
+        if not 0.05 <= best["threshold"] <= 0.9:
+            problems.append(f"建议阈值越界：{best['threshold']}")
+        if drift > 0.15:
+            problems.append(f"建议值与生效阈值偏离过大：{round(drift, 3)} > 0.15")
+        if problems:
+            raise SystemExit("[check] FAIL: " + "; ".join(problems))
+        print("[check] ok")
 
     if args.write:
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)

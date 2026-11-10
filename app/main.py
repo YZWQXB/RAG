@@ -3,14 +3,16 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.core import metrics
 from app.core.config import settings
 from app.core.db import dispose_engines, session_scope
 from app.core.errors import AppError
+from app.core.http import close_http_client
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import TraceMiddleware
 
@@ -84,6 +86,7 @@ async def lifespan(_app: FastAPI):
     yield
     if warmup is not None:
         warmup.cancel()
+    await close_http_client()
     await dispose_engines()
 
 
@@ -91,10 +94,18 @@ def create_app() -> FastAPI:
     import app.core.registry  # noqa: F401  确保所有 ORM 模型已注册
     from app.api.v1 import api_router
 
-    app = FastAPI(title="RAG SaaS", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="RAG SaaS", version="1.1.0", lifespan=lifespan)
     app.add_middleware(TraceMiddleware)
     register_exception_handlers(app)
     app.include_router(api_router, prefix="/api/v1")
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics_endpoint() -> Response:
+        if not settings.metrics_enabled:
+            return Response(status_code=404)
+        await metrics.refresh_gauges()
+        payload, content_type = metrics.render()
+        return Response(content=payload, media_type=content_type)
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:

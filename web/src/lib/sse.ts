@@ -3,6 +3,7 @@ import { clearToken, getToken } from "./auth";
 export type Citation = {
   index: number;
   document_id: string;
+  chunk_id?: string | null;
   title: string;
   heading_path: string | null;
   page_from: number;

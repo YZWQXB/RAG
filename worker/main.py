@@ -17,6 +17,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.db import dispose_engines
+from app.core.http import close_http_client
 from app.core.logging import configure_logging, get_logger
 from app.core.mode import sync_from_env_if_changed
 from app.core.redis_client import close_redis
@@ -80,6 +81,7 @@ async def main() -> None:
     try:
         await asyncio.gather(*tasks)
     finally:
+        await close_http_client()
         await close_redis()
         await dispose_engines()
         log.info("worker_stopped")

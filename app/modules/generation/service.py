@@ -21,6 +21,7 @@ from app.core.context import get_trace_id
 from app.core.db import session_scope
 from app.core.errors import AppError, PermissionDeniedError
 from app.core.logging import get_logger
+from app.core.metrics import CHAT_OUTCOME
 from app.core.security import Principal
 from app.core.tokens import count_tokens
 from app.modules.conversation import service as conversation_service
@@ -28,7 +29,9 @@ from app.modules.generation.citations import extract_citations
 from app.modules.generation.prompt import build_messages, prompt_tokens
 from app.modules.iam.permissions import filter_readable_kbs
 from app.modules.quota.service import record_usage
-from app.modules.retrieval.service import retrieve
+from app.modules.retrieval.embedding_cache import embed_cached
+from app.modules.retrieval.rewrite import normalize_query
+from app.modules.retrieval.service import answerable, retrieve
 from app.modules.retrieval.types import RetrievalResult
 from app.providers import get_llm_provider
 from app.providers.llm.base import LLMError
@@ -43,6 +46,12 @@ def sse(event: str, data: dict) -> str:
 
 
 async def _prepare(principal: Principal, payload) -> tuple[uuid.UUID, RetrievalResult, list[dict]]:
+    """准备会话上下文与检索结果。
+
+    刻意拆成两个事务：向量推理是 CPU 密集操作（本地 bge-m3 单条 1~2 秒），
+    如果放在事务里，一个问答就占着连接池的一条连接直到推理结束。
+    连接池只有 15 条，十几个并发问答就会开始排队。
+    """
     async with session_scope(tenant_id=principal.tenant_id) as session:
         readable = set(await filter_readable_kbs(session, principal))
         effective = [kb_id for kb_id in payload.kb_ids if kb_id in readable]
@@ -64,8 +73,6 @@ async def _prepare(principal: Principal, payload) -> tuple[uuid.UUID, RetrievalR
                 if item.role in {"user", "assistant"}
             ]
 
-        result = await retrieve(session, principal, effective, payload.query)
-
         await conversation_service.add_message(
             session,
             tenant_id=principal.tenant_id,
@@ -74,8 +81,19 @@ async def _prepare(principal: Principal, payload) -> tuple[uuid.UUID, RetrievalR
             content=payload.query,
         )
         await conversation_service.maybe_set_title(session, conversation, payload.query)
+        conversation_id = conversation.id
 
-    return conversation.id, result, history
+    # 事务外做向量计算；离线模式走词法召回，不产生查询向量
+    vector = (
+        None
+        if settings.embedding_provider == "fake"
+        else await embed_cached(normalize_query(payload.query))
+    )
+
+    async with session_scope(tenant_id=principal.tenant_id) as session:
+        result = await retrieve(session, principal, effective, payload.query, vector=vector)
+
+    return conversation_id, result, history
 
 
 async def _persist_assistant(
@@ -125,7 +143,8 @@ async def stream_answer(principal: Principal, payload) -> AsyncIterator[str]:
         return
 
     blocks = result.context.blocks
-    below_threshold = result.top_dense_score < settings.retrieval_no_answer_threshold
+    # 稠密与稀疏两路都算数：只看稠密会把「字面命中但语义分低」的查询误拒
+    below_threshold = not answerable(result.top_dense_score, result.top_sparse_score)
 
     if not blocks or below_threshold:
         message_id = await _persist_assistant(
@@ -137,6 +156,7 @@ async def stream_answer(principal: Principal, payload) -> AsyncIterator[str]:
             token_out=0,
             latency_ms=int((time.perf_counter() - started) * 1000),
         )
+        CHAT_OUTCOME.labels(outcome="no_answer").inc()
         yield sse("no_answer", {"message": NO_ANSWER_TEXT})
         yield sse("done", {"message_id": str(message_id), "used_citations": []})
         return
@@ -148,6 +168,7 @@ async def stream_answer(principal: Principal, payload) -> AsyncIterator[str]:
                 {
                     "index": block.index,
                     "document_id": str(block.document_id),
+                    "chunk_id": str(block.chunk_id) if block.chunk_id else None,
                     "title": block.title,
                     "heading_path": block.heading_path,
                     "page_from": block.page_from,
@@ -200,6 +221,25 @@ async def stream_answer(principal: Principal, payload) -> AsyncIterator[str]:
             task.cancel()
             with contextlib.suppress(BaseException):
                 await task
+    except (asyncio.CancelledError, GeneratorExit):
+        # 用户点「停止」/ 浏览器断开：把已生成的部分落库，否则刷新后这段回答凭空消失，
+        # 但 token 已经花了。shield 是为了在取消风暴中仍给持久化一次机会。
+        partial = "".join(parts)
+        with contextlib.suppress(Exception):
+            await asyncio.shield(
+                _persist_assistant(
+                    principal,
+                    conversation_id,
+                    partial,
+                    status="incomplete",
+                    token_in=token_in,
+                    token_out=count_tokens(partial),
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                )
+            )
+        CHAT_OUTCOME.labels(outcome="incomplete").inc()
+        raise
+
     except LLMError as exc:
         # 保留已生成内容，标记为不完整，便于前端"生成中断 + 重试"
         partial = "".join(parts)
@@ -247,6 +287,7 @@ async def stream_answer(principal: Principal, payload) -> AsyncIterator[str]:
         ],
     )
 
+    CHAT_OUTCOME.labels(outcome="normal").inc()
     yield sse(
         "done",
         {

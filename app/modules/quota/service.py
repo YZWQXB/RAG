@@ -152,15 +152,59 @@ async def record_usage(
         log.warning("usage_counter_failed", metric=metric, error=type(exc).__name__)
 
 
+def usage_entry(used: int, limit: int, warn_ratio: float) -> dict:
+    """把 used/limit 折算成前端能直接用的余量与状态。
+
+    limit<=0 视为「不限量」（free 套餐不含该指标时 limits 里可能没有键），
+    此时 ratio 给 0、state 给 ok，避免除零和误报红。
+    """
+    if limit <= 0:
+        return {"used": used, "limit": 0, "remaining": 0, "ratio": 0.0, "state": "ok"}
+
+    ratio = round(used / limit, 4)
+    remaining = max(0, limit - used)
+    if used >= limit:
+        state = "exceeded"
+    elif ratio >= warn_ratio:
+        state = "warning"
+    else:
+        state = "ok"
+    return {"used": used, "limit": limit, "remaining": remaining, "ratio": ratio, "state": state}
+
+
+async def _warn_once(tenant_id: uuid.UUID, metric: str, entry: dict) -> None:
+    """跨过阈值只告警一次，否则每次查配额都会刷屏。
+
+    用 Redis SET NX 做去重，键按「租户+指标+月份」建，Redis 不可用时静默跳过。
+    """
+    if entry["state"] != "warning":
+        return
+    key = f"quota:warn:{tenant_id}:{metric}:{_month_key()}"
+    try:
+        first = await get_redis().set(key, "1", ex=40 * 24 * 3600, nx=True)
+    except Exception as exc:
+        log.warning("quota_warn_failed", metric=metric, error=type(exc).__name__)
+        return
+    if first:
+        log.warning(
+            "quota_near_limit",
+            tenant_id=str(tenant_id),
+            metric=metric,
+            used=entry["used"],
+            limit=entry["limit"],
+            ratio=entry["ratio"],
+        )
+
+
 async def usage_report(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
     plan = await _plan_for(session, tenant_id)
     limits = limits_for(plan)
     usage = await current_usage(session, tenant_id)
-    return {
-        "plan": plan,
-        "usage": {
-            metric: {"used": value, "limit": limits.get(metric, 0)}
-            for metric, value in usage.items()
-            if not metric.startswith("_")
-        },
-    }
+    entries: dict[str, dict] = {}
+    for metric, value in usage.items():
+        if metric.startswith("_"):
+            continue
+        entry = usage_entry(value, limits.get(metric, 0), settings.quota_warn_ratio)
+        entries[metric] = entry
+        await _warn_once(tenant_id, metric, entry)
+    return {"plan": plan, "usage": entries}

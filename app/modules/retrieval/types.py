@@ -51,4 +51,5 @@ class RetrievalResult:
     candidates: list[Candidate] = field(default_factory=list)
     context: ContextResult = field(default_factory=ContextResult)
     top_dense_score: float = 0.0
+    top_sparse_score: float = 0.0
     timings_ms: dict[str, int] = field(default_factory=dict)

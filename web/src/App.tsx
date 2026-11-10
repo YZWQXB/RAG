@@ -1,5 +1,6 @@
 import { BrowserRouter, Link, Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
 import { Chat } from "./pages/Chat";
+import { ForgotPassword } from "./pages/ForgotPassword";
 import { KbDocuments } from "./pages/KbDocuments";
 import { KbList } from "./pages/KbList";
 import { Login } from "./pages/Login";
@@ -62,6 +63,7 @@ export function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route element={<Protected />}>
           <Route path="/kbs" element={<KbList />} />
           <Route path="/kbs/:kbId/documents" element={<KbDocuments />} />

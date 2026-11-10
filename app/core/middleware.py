@@ -10,6 +10,7 @@ import uuid
 
 from app.core.context import reset_context, set_trace_id
 from app.core.logging import get_logger
+from app.core.metrics import observe_request
 
 log = get_logger("http")
 
@@ -42,12 +43,16 @@ class TraceMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
+            duration = time.perf_counter() - started
             if path not in _SKIP_PATHS:
                 log.info(
                     "request",
                     method=scope.get("method"),
                     path=path,
                     status=status_code["value"],
-                    duration_ms=round((time.perf_counter() - started) * 1000, 1),
+                    duration_ms=round(duration * 1000, 1),
+                )
+                observe_request(
+                    scope.get("method", ""), path, status_code["value"] or 500, duration
                 )
             reset_context()

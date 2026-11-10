@@ -11,9 +11,10 @@ from typing import Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.api.v1.deps import CurrentPrincipal
+from app.api.v1.deps import CurrentPrincipal, DbSession
 from app.core import mode
 from app.core.errors import PermissionDeniedError
+from app.modules.audit import service as audit
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -47,9 +48,20 @@ async def get_mode(principal: CurrentPrincipal) -> ModeOut:
 
 
 @router.post("/mode", response_model=ModeOut)
-async def switch_mode(payload: ModeSwitchIn, principal: CurrentPrincipal) -> ModeOut:
+async def switch_mode(
+    payload: ModeSwitchIn, principal: CurrentPrincipal, session: DbSession
+) -> ModeOut:
     if principal.role not in SWITCH_ROLES:
         raise PermissionDeniedError("只有空间所有者或管理员可以切换运行模式")
 
+    before = mode.describe_mode().mode
     status = await mode.apply_mode(payload.mode)
+    # 切到离线会让整个实例的检索退化为字面匹配，属于必须留痕的配置变更
+    await audit.record(
+        session,
+        principal,
+        "mode.switch",
+        target_type="system",
+        detail={"from": before, "to": status.mode},
+    )
     return _payload(status, can_switch=True)

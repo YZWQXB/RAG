@@ -107,3 +107,22 @@ async def test_provider_factory_returns_local(monkeypatch):
     reset_providers()
     monkeypatch.setattr(settings, "embedding_provider", "local")
     assert isinstance(get_embedding_provider(), LocalBgeEmbedding)
+
+
+def test_missing_dependency_message_is_actionable(monkeypatch):
+    """依赖缺失时的报错必须给出可执行的安装命令，而不是裸 ImportError。"""
+
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "sentence_transformers":
+            raise ImportError("No module named 'sentence_transformers'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(EmbeddingError) as exc:
+        local_bge._load_model_sync("BAAI/bge-m3", "cpu")
+    assert "local-embedding" in str(exc.value)

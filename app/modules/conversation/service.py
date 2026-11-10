@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.security import Principal
-from app.modules.conversation.models import Conversation, Message, MessageCitation
+from app.modules.conversation.models import (
+    Conversation,
+    Message,
+    MessageCitation,
+    MessageFeedback,
+)
 from app.modules.conversation.schemas import CitationOut, ConversationOut, MessageOut
 
 DEFAULT_TITLE = "新会话"
@@ -76,42 +81,76 @@ async def _owned_conversation(
     return conversation
 
 
-async def list_conversations(session: AsyncSession, principal: Principal) -> list[ConversationOut]:
+async def list_conversations(
+    session: AsyncSession,
+    principal: Principal,
+    q: str | None = None,
+    order: str = "desc",
+    limit: int = 100,
+    offset: int = 0,
+) -> list[ConversationOut]:
+    """列出当前用户的会话，支持标题搜索与按更新时间排序。
+
+    LIKE 的通配符必须转义：用户搜「50%」时，% 若当通配符会匹配到全部会话。
+    """
     counts = (
         select(Message.conversation_id, func.count(Message.id).label("cnt"))
         .group_by(Message.conversation_id)
         .subquery()
     )
-    rows = (
-        await session.execute(
-            select(Conversation, func.coalesce(counts.c.cnt, 0))
-            .outerjoin(counts, counts.c.conversation_id == Conversation.id)
-            .where(
-                Conversation.deleted_at.is_(None),
-                Conversation.user_id == principal.user_id,
-            )
-            .order_by(Conversation.updated_at.desc())
+
+    stmt = (
+        select(Conversation, func.coalesce(counts.c.cnt, 0))
+        .outerjoin(counts, counts.c.conversation_id == Conversation.id)
+        .where(
+            Conversation.deleted_at.is_(None),
+            Conversation.user_id == principal.user_id,
         )
-    ).all()
+    )
+
+    keyword = (q or "").strip()
+    if keyword:
+        escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = stmt.where(Conversation.title.ilike(f"%{escaped}%", escape="\\"))
+
+    if order == "asc":
+        stmt = stmt.order_by(Conversation.updated_at.asc(), Conversation.id.asc())
+    else:
+        stmt = stmt.order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+
+    # 分页必须有上限：会话会一直增长，全量返回会让首屏越来越慢
+    stmt = stmt.limit(limit).offset(offset)
+
+    rows = (await session.execute(stmt)).all()
     return [_to_out(conversation, count) for conversation, count in rows]
 
 
 async def get_messages(
-    session: AsyncSession, principal: Principal, conversation_id: uuid.UUID
+    session: AsyncSession,
+    principal: Principal,
+    conversation_id: uuid.UUID,
+    limit: int = 500,
 ) -> list[MessageOut]:
+    """返回最近的 limit 条消息（仍按时间正序）。
+
+    取法是「倒序取 N 条再翻转」，这样限制的是最近的消息而不是最早的——
+    长会话里用户关心的是结尾，不是半年前的寒暄。
+    """
     await _owned_conversation(session, principal, conversation_id)
 
-    messages = (
+    recent = (
         (
             await session.execute(
                 select(Message)
                 .where(Message.conversation_id == conversation_id)
-                .order_by(Message.created_at, Message.id)
+                .order_by(Message.created_at.desc(), Message.id.desc())
+                .limit(limit)
             )
         )
         .scalars()
         .all()
     )
+    messages = list(reversed(recent))
 
     citations = (
         (
@@ -134,6 +173,7 @@ async def get_messages(
         by_message.setdefault(citation.message_id, []).append(
             CitationOut(
                 document_id=citation.document_id,
+                chunk_id=citation.chunk_id,
                 title=citation.title,
                 heading_path=citation.heading_path,
                 page_from=citation.page_from,
@@ -238,3 +278,130 @@ def _to_out(conversation: Conversation, count: int) -> ConversationOut:
         message_count=count,
         updated_at=conversation.updated_at,
     )
+
+
+async def upsert_feedback(
+    session: AsyncSession,
+    principal: Principal,
+    message_id: uuid.UUID,
+    rating: str,
+    comment: str | None,
+) -> tuple[str, bool]:
+    """记录/更新对某条回答的反馈，返回 (rating, 是否新建)。
+
+    快照里带上「问题 + 回答 + 引用」——只存 rating 没有价值，
+    因为分析 bad case 时最需要知道当时检索到了什么、模型据此说了什么。
+    """
+    message = await session.get(Message, message_id)
+    if message is None:
+        raise NotFoundError()
+
+    await _owned_conversation(session, principal, message.conversation_id)
+
+    question = (
+        await session.execute(
+            select(Message.content)
+            .where(
+                Message.conversation_id == message.conversation_id,
+                Message.role == "user",
+                Message.created_at <= message.created_at,
+            )
+            .order_by(Message.created_at.desc(), Message.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    citations = (
+        (
+            await session.execute(
+                select(MessageCitation)
+                .where(MessageCitation.message_id == message_id)
+                .order_by(MessageCitation.rank)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    snapshot = {
+        "question": question or "",
+        "answer": message.content[:1500],
+        "status": message.status,
+        "citations": [
+            {
+                "rank": item.rank,
+                "document_id": str(item.document_id),
+                "chunk_id": str(item.chunk_id) if item.chunk_id else None,
+                "title": item.title,
+                "heading_path": item.heading_path,
+            }
+            for item in citations
+        ],
+        "latency_ms": message.latency_ms,
+        "token_out": message.token_out,
+    }
+
+    existing = (
+        await session.execute(
+            select(MessageFeedback).where(
+                MessageFeedback.message_id == message_id,
+                MessageFeedback.user_id == principal.user_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if existing is None:
+        session.add(
+            MessageFeedback(
+                id=uuid.uuid4(),
+                tenant_id=principal.tenant_id,
+                message_id=message_id,
+                user_id=principal.user_id,
+                rating=rating,
+                comment=comment,
+                snapshot=snapshot,
+                created_at=datetime.now(UTC),
+            )
+        )
+        await session.flush()
+        return rating, True
+
+    existing.rating = rating
+    existing.comment = comment
+    existing.snapshot = snapshot
+    await session.flush()
+    return rating, False
+
+
+async def export_markdown(
+    session: AsyncSession, principal: Principal, conversation_id: uuid.UUID
+) -> tuple[str, str]:
+    """把会话导出为 Markdown，返回 (文件名, 内容)。
+
+    引用按 [n] 展开成「文档 · 章节 · 页码」，这样粘贴到文档里仍然可追溯。
+    """
+    conversation = await _owned_conversation(session, principal, conversation_id)
+    messages = await get_messages(session, principal, conversation_id)
+
+    lines = [f"# {conversation.title}", ""]
+    lines.append(f"> 导出时间：{datetime.now(UTC).astimezone().strftime('%Y-%m-%d %H:%M')}")
+    lines.append("")
+
+    for message in messages:
+        who = "我" if message.role == "user" else "助手"
+        lines.append(f"## {who}")
+        lines.append("")
+        lines.append(message.content)
+        lines.append("")
+        if message.citations:
+            lines.append("**引用**")
+            lines.append("")
+            for citation in message.citations:
+                location = citation.heading_path or "正文"
+                lines.append(
+                    f"- [{citation.rank}] {citation.title} · {location} · "
+                    f"第 {citation.page_from} 页"
+                )
+            lines.append("")
+
+    safe_title = "".join(ch for ch in conversation.title if ch not in '\\/:*?"<>|').strip()
+    return f"{safe_title or '会话'}.md", "\n".join(lines)

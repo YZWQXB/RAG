@@ -68,3 +68,27 @@ export const api = {
     return request<T>(path, { method: "POST", body: form });
   },
 };
+
+/** 带鉴权地下载文件（直接 window.open 不会带 Authorization 头）。 */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(`${BASE}${path}`, { headers });
+  if (!response.ok) throw new ApiError(response.status, "DOWNLOAD_FAILED", "导出失败", {});
+
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  const filename = match ? decodeURIComponent(match[1]) : fallbackName;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}

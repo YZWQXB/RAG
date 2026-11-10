@@ -1,6 +1,6 @@
 [project]
 name = "rag-saas"
-version = "0.1.0"
+version = "1.1.0"
 description = "Multi-tenant RAG knowledge base system"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -18,6 +18,7 @@ dependencies = [
   "redis>=5.2,<6",
   "arq>=0.26,<0.27",
   "httpx>=0.27,<0.28",
+  "prometheus-client>=0.21,<1",
   "boto3>=1.35,<2",
   "pymupdf>=1.24,<2",
   "python-docx>=1.1,<2",
@@ -26,6 +27,14 @@ dependencies = [
   "python-multipart>=0.0.12,<0.1",
   # Windows 没有系统 tzdata，zoneinfo 需要它才能解析 Asia/Shanghai
   "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+# 本地向量模式（EMBEDDING_PROVIDER=local）才需要，体积约 2.5GB。
+# 不放进主依赖：CI / Docker / 只调 API 的部署不应被迫下载 torch。
+local-embedding = [
+  "torch>=2.4,<2.9",
+  "sentence-transformers>=3.0,<6",
 ]
 
 [dependency-groups]

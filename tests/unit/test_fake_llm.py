@@ -68,3 +68,70 @@ async def test_last_messages_recorded():
     await _collect(fake, CONTEXT_MESSAGES)
     assert fake.calls == 1
     assert fake.last_messages == CONTEXT_MESSAGES
+
+
+@pytest.mark.asyncio
+async def test_offline_answer_follows_documented_format():
+    """离线回答的固定格式：标题行 + 项目符号摘录[编号] + 离线声明。"""
+    fake = FakeLLM()
+    text = await _collect(fake, CONTEXT_MESSAGES)
+
+    assert text.startswith("根据资料，「printf用法是什么」的参考内容如下：")
+    assert "\n- " in text, "摘录应以项目符号列出"
+    assert "[1]" in text, "引用编号必须沿用参考资料里的真实编号"
+    assert text.rstrip().endswith("> 离线模式：以上为知识库原文摘录，未经模型归纳生成。")
+
+
+@pytest.mark.asyncio
+async def test_irrelevant_reference_is_filtered():
+    """与问题无关的参考块不应出现在离线回答里（避免"凑数"感）。"""
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                "【参考资料】\n"
+                "[1] (文档: C.md | 章节: 递归 | 第 1 页)\n递归是函数调用自身。\n"
+                "[2] (文档: DNS.md | 章节: 域名 | 第 9 页)\n根域名服务器保存顶级域地址。\n"
+                "\n【问题】递归是什么"
+            ),
+        }
+    ]
+    text = await _collect(FakeLLM(), messages)
+
+    assert "递归" in text
+    assert "域名" not in text, "无关资料应被过滤"
+    assert "[2]" not in text
+
+
+@pytest.mark.asyncio
+async def test_excerpt_strips_chunk_header():
+    """分块自带的「[文档: … | 章节: …]」头部不应出现在回答正文里。"""
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                "【参考资料】\n"
+                "[1] (文档: Linux.md | 章节: 文件系统 | 第 2 页)\n"
+                "[文档: Linux.md | 章节: 文件系统] ext4 支持日志，xfs 适合大文件。\n"
+                "\n【问题】Linux 有哪些文件系统"
+            ),
+        }
+    ]
+    text = await _collect(FakeLLM(), messages)
+
+    assert "ext4" in text
+    assert "文档:" not in text, "元数据头部应被剥离"
+    assert "[1]" in text
+
+
+@pytest.mark.asyncio
+async def test_at_most_three_references():
+    blocks = "\n\n".join(
+        f"[{i}] (文档: d{i}.md | 章节: h | 第 {i} 页)\n第 {i} 段内容含关键词 递归"
+        for i in range(1, 6)
+    )
+    messages = [{"role": "user", "content": f"【参考资料】\n{blocks}\n\n【问题】递归是什么"}]
+    text = await _collect(FakeLLM(), messages)
+
+    assert text.count("- ") == 3, "最多展示 3 条参考资料"
+    assert "[4]" not in text and "[5]" not in text

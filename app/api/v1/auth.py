@@ -14,7 +14,8 @@ from app.core.config import settings
 from app.core.db import admin_session, session_scope
 from app.core.errors import RateLimitedError
 from app.core.ratelimit import client_ip, hit
-from app.core.security import create_access_token
+from app.core.security import Principal, create_access_token
+from app.modules.audit import service as audit
 from app.modules.iam import service as iam_service
 from app.modules.iam.models import User
 from app.modules.iam.schemas import (
@@ -31,8 +32,18 @@ from app.modules.tenancy.service import register_tenant
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+async def _enforce_register_limit(request: Request) -> None:
+    """按来源 IP 限制注册频率，避免批量刷号占库。"""
+    allowed, retry_after = await hit(
+        f"register:{client_ip(request)}", settings.register_rate_limit_per_minute
+    )
+    if not allowed:
+        raise RateLimitedError(retry_after)
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterIn) -> dict:
+async def register(body: RegisterIn, request: Request) -> dict:
+    await _enforce_register_limit(request)
     result = await register_tenant(
         email=body.email,
         password=body.password,
@@ -55,6 +66,22 @@ async def _enforce_login_limit(request: Request) -> None:
         raise RateLimitedError(retry_after)
 
 
+async def _audit_login(user_id, tenant_id, role: str, request: Request) -> None:
+    """登录成功留痕，便于排查异常登录。失败不阻断登录。"""
+    try:
+        async with session_scope(tenant_id=tenant_id) as session:
+            await audit.record(
+                session,
+                Principal(user_id=user_id, tenant_id=tenant_id, role=role),
+                "auth.login",
+                target_type="user",
+                target_id=user_id,
+                detail={"ip": client_ip(request)},
+            )
+    except Exception:  # 审计失败不能把用户挡在门外
+        pass
+
+
 @router.post("/login")
 async def login(body: LoginIn, request: Request) -> dict:
     await _enforce_login_limit(request)
@@ -70,6 +97,7 @@ async def login(body: LoginIn, request: Request) -> dict:
 
     if len(briefs) == 1:
         brief = briefs[0]
+        await _audit_login(user.id, brief.id, brief.role, request)
         token = create_access_token(user.id, brief.id, brief.role)
         return LoginOut(
             token=token,
@@ -98,6 +126,7 @@ async def issue_token(body: TokenIn, request: Request) -> dict:
         raise NotFoundError()
 
     brief: TenantBrief = briefs[0]
+    await _audit_login(user.id, brief.id, brief.role, request)
     token = create_access_token(user.id, brief.id, brief.role)
     return TokenOut(
         token=token, tenant=brief, user=UserOut(id=user.id, email=user.email, name=user.name)

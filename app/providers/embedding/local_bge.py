@@ -30,7 +30,7 @@ def _load_model_sync(model_name: str, device: str) -> Any:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:  # pragma: no cover - 依赖缺失时的可读报错
         raise EmbeddingError(
-            "local 向量模式需要 sentence-transformers：uv pip install torch sentence-transformers"
+            "local 向量模式需要额外依赖：uv sync --extra local-embedding（约 2.5GB）"
         ) from exc
 
     # HF 直连在国内通常不通，默认走镜像；用户显式设了 HF_ENDPOINT 就以用户为准。

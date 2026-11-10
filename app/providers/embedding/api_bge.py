@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-import httpx
-
 from app.core.config import settings
+from app.core.http import get_http_client
 from app.core.logging import get_logger
 from app.providers.embedding.base import EmbeddingError
 
@@ -30,14 +29,15 @@ class ApiBgeEmbedding:
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        f"{self.base_url}/embeddings",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        json={"model": self.model, "input": texts},
-                    )
-                    response.raise_for_status()
-                    payload = response.json()
+                client = get_http_client()
+                response = await client.post(
+                    f"{self.base_url}/embeddings",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json={"model": self.model, "input": texts},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                payload = response.json()
                 vectors = [item["embedding"] for item in payload["data"]]
                 if len(vectors) != len(texts):
                     raise EmbeddingError("向量数量与输入不一致")

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -120,7 +121,22 @@ async def _dispatch(row: dict) -> None:
 
 
 async def poll_once(limit: int = 10) -> int:
+    """领取一批事件并处理。
+
+    并发由 `ingest_max_concurrent` 闸门限制：bge-m3 在进程内抢占 torch 线程，
+    同时跑 10 个文档会互相拖慢。单个事件失败不影响同批其它事件——
+    _dispatch 内部已把失败写回 outbox（重置为 pending 并退避重试）。
+    """
     rows = await _claim(limit)
-    for row in rows:
-        await _dispatch(row)
+    if not rows:
+        return 0
+
+    gate = asyncio.Semaphore(max(1, settings.ingest_max_concurrent))
+
+    async def guarded(row: dict) -> None:
+        async with gate:
+            await _dispatch(row)
+
+    # return_exceptions=True：一个事件抛出未捕获异常时不能取消同批其它事件
+    await asyncio.gather(*(guarded(row) for row in rows), return_exceptions=True)
     return len(rows)

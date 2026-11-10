@@ -31,3 +31,17 @@ class DocumentListOut(BaseModel):
     total: int
     page: int
     size: int
+
+
+class ChunkSourceOut(BaseModel):
+    """引用定位到原文用：只回展示所需字段，不回向量。"""
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    kb_id: uuid.UUID
+    title: str
+    chunk_index: int
+    heading_path: str | None = None
+    page_from: int = 1
+    page_to: int = 1
+    content: str

@@ -66,8 +66,17 @@ class Settings(BaseSettings):
     retrieval_budget_tokens: int = 3000
     # 无答案阈值与向量模型强相关：换 embedding 模型必须重跑
     # scripts.calibrate_threshold。bge-m3 实测可答 p50=0.742 / 不可答 max=0.513，
-    # 取 0.55 分离度最好；字符袋假向量分布偏低，用 0.35。
-    retrieval_no_answer_threshold: float = 0.35
+    # 取 0.55 分离度最好。
+    retrieval_no_answer_threshold: float = 0.55
+    # 离线走词法打分（余弦×覆盖率），量纲与向量余弦不同：
+    # 实测应作答 0.12~0.43、应拒答最高 0.026，取 0.10。
+    # 沿用 0.55 会让离线模式 100% 拒答。
+    retrieval_no_answer_threshold_fake: float = 0.10
+    # 稀疏通道（pg_trgm）单独的门槛：精确编号类查询稠密分低但字面命中高，
+    # 只看稠密会误拒。
+    retrieval_sparse_answer_threshold: float = 0.35
+    # 离线模式逐块算字符袋相似度，需要把块读进内存；给一个上限防止大库把请求拖死
+    offline_scan_limit: int = 2000
     retrieval_rerank_enabled: bool = True
     enable_llm_rewrite: bool = False
 
@@ -80,12 +89,23 @@ class Settings(BaseSettings):
     ingest_max_attempts: int = 3
     # 单文档处理总超时：worker 只有一个轮询循环，不能被子任务无限占用
     ingest_timeout_seconds: float = 300.0
+    # 同时处理的入库文档数。bge-m3 在进程内抢占 torch 线程，开太大反而整体更慢
+    ingest_max_concurrent: int = 2
 
     sse_keepalive_seconds: float = 15.0
     login_rate_limit_per_minute: int = 20
+    # 注册也要限流：否则可被脚本批量刷号占库
+    register_rate_limit_per_minute: int = 5
+    # 问答接口按 user_id 限流：登录限流按 IP 是因为那时不知道用户是谁；
+    # 问答已知身份，按人计数才能避免同出口 IP 的同事互相挤兑。
+    chat_rate_limit_per_minute: int = 5
+    # 用量达到配额的比例阈值，超过后前端标红并记一次告警日志
+    quota_warn_ratio: float = 0.8
     quota_timezone: str = "Asia/Shanghai"
 
     enable_debug_api: bool = True
+    # /metrics 只暴露聚合量，但仍建议在网关层限制访问来源
+    metrics_enabled: bool = True
 
     @model_validator(mode="after")
     def _guard_production(self) -> Settings:

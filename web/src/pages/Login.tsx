@@ -125,12 +125,17 @@ export function Login() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-zinc-500">
-          还没有空间？
-          <Link to="/register" className="ml-1 text-blue-700 underline">
-            立即创建
+        <div className="mt-4 flex items-center justify-between text-xs">
+          <Link to="/forgot-password" className="text-blue-700 underline">
+            忘记密码？
           </Link>
-        </p>
+          <span className="text-zinc-500">
+            还没有空间？
+            <Link to="/register" className="ml-1 text-blue-700 underline">
+              立即创建
+            </Link>
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -22,13 +22,15 @@ from app.providers.reranker.api_bge import ApiBgeReranker
 
 
 def _use_transport(monkeypatch, handler) -> None:
-    original = httpx.AsyncClient
+    """把共享客户端换成带 MockTransport 的实例。
 
-    def factory(*args, **kwargs):
-        kwargs["transport"] = httpx.MockTransport(handler)
-        return original(*args, **kwargs)
+    生产代码已改为复用 `app.core.http` 里的进程级客户端，
+    所以不能再 patch `httpx.AsyncClient` 构造器——那只会影响新建的实例。
+    """
+    from app.core import http as http_module
 
-    monkeypatch.setattr(httpx, "AsyncClient", factory)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(http_module, "_client", client)
 
 
 @pytest.fixture(autouse=True)

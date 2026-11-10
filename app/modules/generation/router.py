@@ -4,8 +4,10 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.deps import CurrentPrincipal
+from app.core.config import settings
 from app.core.db import session_scope
-from app.core.errors import PermissionDeniedError
+from app.core.errors import PermissionDeniedError, RateLimitedError
+from app.core.ratelimit import hit
 from app.modules.generation.schemas import ChatIn
 from app.modules.generation.service import stream_answer
 from app.modules.iam.permissions import filter_readable_kbs
@@ -23,6 +25,13 @@ SSE_HEADERS = {
 
 async def _precheck(principal: CurrentPrincipal, payload: ChatIn) -> None:
     """流式响应一旦开始就无法改状态码，因此把 403/429 提前到路由层抛。"""
+    # 先限流后查库：被刷的时候不该连数据库连接池一起耗掉
+    allowed, retry_after = await hit(
+        f"chat:{principal.user_id}", settings.chat_rate_limit_per_minute
+    )
+    if not allowed:
+        raise RateLimitedError(retry_after)
+
     async with session_scope(tenant_id=principal.tenant_id) as session:
         readable = set(await filter_readable_kbs(session, principal))
         if not any(kb_id in readable for kb_id in payload.kb_ids):
