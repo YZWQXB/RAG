@@ -159,3 +159,17 @@ jobs:
 
       - name: 阈值回归检查
         run: uv run python -m scripts.calibrate_threshold --check
+
+      - name: 检索质量回归
+        run: uv run python -m scripts.eval --check
+
+      - name: 多轮改写评测
+        run: uv run python -m scripts.eval_rewrite --check
+
+      - name: 归档评测报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: docs/reports/eval-*.md
+          if-no-files-found: warn

@@ -23,7 +23,15 @@ from app.modules.tenancy.service import register_tenant
 from worker.tasks.outbox import poll_once
 
 FIXTURES = Path("tests/fixtures")
-DOCS = ["sample.md", "after_sales.md", "product.md"]
+# 语料要覆盖多个互不相关的主题，否则「召回不到」和「召回到错的主题」区分不开
+DOCS = [
+    "sample.md",
+    "after_sales.md",
+    "product.md",
+    "it_security.md",
+    "travel_expense.md",
+    "onboarding.md",
+]
 EVAL_SLUG = "eval-lab"
 EVAL_EMAIL = "eval@example.com"
 OUTPUT = Path("tests/eval/corpus.json")

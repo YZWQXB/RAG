@@ -39,9 +39,7 @@ async def test_conversations_support_limit_and_offset(client_a, tenant_a):
     assert page1.status_code == 200
     assert len(page1.json()) == 2
     assert len(page2.json()) == 1
-    assert {item["id"] for item in page1.json()}.isdisjoint(
-        {item["id"] for item in page2.json()}
-    )
+    assert {item["id"] for item in page1.json()}.isdisjoint({item["id"] for item in page2.json()})
 
 
 async def test_messages_limit_returns_latest_in_ascending_order(client_a, tenant_a):

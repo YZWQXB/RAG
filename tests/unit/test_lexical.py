@@ -10,9 +10,7 @@ from app.modules.retrieval.lexical import lexical_score
 
 
 def test_related_question_scores_above_offline_threshold():
-    score = lexical_score(
-        "什么是递归", "递归是指函数直接或间接调用自身，递归必须有终止条件。"
-    )
+    score = lexical_score("什么是递归", "递归是指函数直接或间接调用自身，递归必须有终止条件。")
     assert score >= 0.10, f"相关问题的分数应过线，实际 {score}"
 
 

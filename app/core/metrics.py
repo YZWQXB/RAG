@@ -47,6 +47,12 @@ CHAT_OUTCOME = Counter(
     ["outcome"],  # normal / no_answer / incomplete / error
 )
 
+QUERY_REWRITE = Counter(
+    "rag_query_rewrite_total",
+    "多轮查询改写结果分布",
+    ["result"],  # applied / rejected / timeout / failed
+)
+
 OUTBOX_PENDING = Gauge("rag_outbox_pending", "待处理的 outbox 事件数")
 DOCUMENTS_PROCESSING = Gauge("rag_documents_processing", "正在解析的文档数")
 

@@ -21,7 +21,7 @@ from app.core.context import get_trace_id
 from app.core.db import session_scope
 from app.core.errors import AppError, PermissionDeniedError
 from app.core.logging import get_logger
-from app.core.metrics import CHAT_OUTCOME
+from app.core.metrics import CHAT_OUTCOME, QUERY_REWRITE
 from app.core.security import Principal
 from app.core.tokens import count_tokens
 from app.modules.conversation import service as conversation_service
@@ -30,7 +30,7 @@ from app.modules.generation.prompt import build_messages, prompt_tokens
 from app.modules.iam.permissions import filter_readable_kbs
 from app.modules.quota.service import record_usage
 from app.modules.retrieval.embedding_cache import embed_cached
-from app.modules.retrieval.rewrite import normalize_query
+from app.modules.retrieval.rewrite import maybe_rewrite, normalize_query
 from app.modules.retrieval.service import answerable, retrieve
 from app.modules.retrieval.types import RetrievalResult
 from app.providers import get_llm_provider
@@ -45,12 +45,16 @@ def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def _prepare(principal: Principal, payload) -> tuple[uuid.UUID, RetrievalResult, list[dict]]:
+async def _prepare(
+    principal: Principal, payload
+) -> tuple[uuid.UUID, RetrievalResult, list[dict], bool]:
     """准备会话上下文与检索结果。
 
     刻意拆成两个事务：向量推理是 CPU 密集操作（本地 bge-m3 单条 1~2 秒），
     如果放在事务里，一个问答就占着连接池的一条连接直到推理结束。
     连接池只有 15 条，十几个并发问答就会开始排队。
+
+    返回值最后一项表示检索是否用了改写后的查询，供前端提示"已按 xx 检索"。
     """
     async with session_scope(tenant_id=principal.tenant_id) as session:
         readable = set(await filter_readable_kbs(session, principal))
@@ -83,17 +87,38 @@ async def _prepare(principal: Principal, payload) -> tuple[uuid.UUID, RetrievalR
         await conversation_service.maybe_set_title(session, conversation, payload.query)
         conversation_id = conversation.id
 
-    # 事务外做向量计算；离线模式走词法召回，不产生查询向量
+    # 事务外：先按原句检索（离线模式走词法召回，不产生查询向量）
     vector = (
         None
         if settings.embedding_provider == "fake"
         else await embed_cached(normalize_query(payload.query))
     )
-
     async with session_scope(tenant_id=principal.tenant_id) as session:
         result = await retrieve(session, principal, effective, payload.query, vector=vector)
 
-    return conversation_id, result, history
+    # 只有「按原句根本检索不到依据」时，才值得付出改写的延迟与 token。
+    # 这样常规提问零额外成本；而本来就是拒答的追问，多等几秒换一个能答的结果。
+    # 早先的做法是无条件改写，实测上游首字约 6 秒，等于给每次提问都加了 6 秒。
+    rewritten = False
+    if not answerable(result.top_dense_score, result.top_sparse_score):
+        rewritten_query, changed = await maybe_rewrite(payload.query, history)
+        if changed:
+            rewritten_vector = (
+                None
+                if settings.embedding_provider == "fake"
+                else await embed_cached(normalize_query(rewritten_query))
+            )
+            async with session_scope(tenant_id=principal.tenant_id) as session:
+                retried = await retrieve(
+                    session, principal, effective, rewritten_query, vector=rewritten_vector
+                )
+            if answerable(retried.top_dense_score, retried.top_sparse_score):
+                result, rewritten = retried, True
+            else:
+                # 改写没救回来：说明确实没有资料，不是查询表述问题
+                QUERY_REWRITE.labels(result="not_helpful").inc()
+
+    return conversation_id, result, history, rewritten
 
 
 async def _persist_assistant(
@@ -137,7 +162,7 @@ async def stream_answer(principal: Principal, payload) -> AsyncIterator[str]:
     started = time.perf_counter()
 
     try:
-        conversation_id, result, history = await _prepare(principal, payload)
+        conversation_id, result, history, rewritten = await _prepare(principal, payload)
     except AppError as exc:
         yield sse("error", {"code": exc.code, "message": exc.message})
         return
@@ -164,6 +189,8 @@ async def stream_answer(principal: Principal, payload) -> AsyncIterator[str]:
     yield sse(
         "citations",
         {
+            # 只在真的改写过时携带，避免多数情况下的无用字段
+            "rewritten_query": result.normalized_query if rewritten else None,
             "citations": [
                 {
                     "index": block.index,
@@ -174,7 +201,7 @@ async def stream_answer(principal: Principal, payload) -> AsyncIterator[str]:
                     "page_from": block.page_from,
                 }
                 for block in blocks
-            ]
+            ],
         },
     )
 

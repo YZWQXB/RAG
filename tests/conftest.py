@@ -122,14 +122,18 @@ async def prepare_database():
 
 @pytest.fixture(autouse=True)
 async def clean_tables(prepare_database):
-    # 限流计数按"分钟窗口 + 来源"共享，跨用例不清零会让后面用例莫名 429
+    # 两类 Redis 状态必须跨用例清掉：
+    # - rl:* 限流计数按"分钟窗口 + 来源"共享，不清零会让后面用例莫名 429
+    # - rw:* 查询改写缓存按"问句 + 上下文"命中，不清零会让后续用例
+    #   绕过自己注入的假模型（实测表现为「本该失败兜底的用例拿到缓存成功」）
     try:
         from app.core.redis_client import get_redis
 
         redis = get_redis()
-        buckets = [key async for key in redis.scan_iter("rl:*")]
-        if buckets:
-            await redis.delete(*buckets)
+        for pattern in ("rl:*", "rw:*"):
+            buckets = [key async for key in redis.scan_iter(pattern)]
+            if buckets:
+                await redis.delete(*buckets)
     except Exception:
         pass
 

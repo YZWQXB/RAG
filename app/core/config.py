@@ -78,7 +78,16 @@ class Settings(BaseSettings):
     # 离线模式逐块算字符袋相似度，需要把块读进内存；给一个上限防止大库把请求拖死
     offline_scan_limit: int = 2000
     retrieval_rerank_enabled: bool = True
-    enable_llm_rewrite: bool = False
+    # 多轮指代消解：追问「它有什么限制」时改写检索查询。
+    # 代价是每次改写多一次 LLM 调用，因此有门控、超时和缓存兜着。
+    enable_llm_rewrite: bool = True
+    # 超过这个长度视为自带上下文，不改写（15 字约等于一个短问句）
+    query_rewrite_max_chars: int = 15
+    # 改写只在「按原句检索不到依据」时触发，此时用户本来就要收到拒答，
+    # 多等几秒换一个能答的结果是划算的。实测上游首字延迟约 6 秒，3 秒必然超时。
+    query_rewrite_timeout_seconds: float = 10.0
+    # 改写专用模型（留空则用主模型）。小模型首字更快，适配追问场景
+    query_rewrite_model: str = ""
 
     upload_max_bytes: int = 50 * 1024 * 1024
     # zip 类容器（docx）解压后允许的体积上限，防解压炸弹

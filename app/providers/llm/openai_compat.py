@@ -26,7 +26,8 @@ class OpenAICompatLLM:
             raise LLMError("未配置 LLM_API_KEY")
 
         payload = {
-            "model": self.model,
+            # 允许按调用覆盖模型：改写这种几十 token 的任务用小模型更快更便宜
+            "model": kwargs.get("model") or self.model,
             "messages": messages,
             "stream": True,
             "temperature": kwargs.get("temperature", 0.2),

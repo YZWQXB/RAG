@@ -19,3 +19,51 @@
 {"query": "公司的股票期权如何行权", "relevant_contains": [], "type": "no_answer"}
 {"query": "竞品的市场占有率是多少", "relevant_contains": [], "type": "no_answer"}
 {"query": "明年公司的营收目标", "relevant_contains": [], "type": "no_answer"}
+{"query": "密码最少几位", "relevant_contains": ["不少于 12 位"], "type": "fact"}
+{"query": "密码多久必须更换一次", "relevant_contains": ["每 90 天必须更换一次"], "type": "fact"}
+{"query": "密码输错几次会锁定账号", "relevant_contains": ["连续 5 次输错密码"], "type": "fact"}
+{"query": "账号被锁定多久后解锁", "relevant_contains": ["锁定账号 30 分钟"], "type": "fact"}
+{"query": "离开工位锁屏的快捷键是什么", "relevant_contains": ["Win+L"], "type": "fact"}
+{"query": "安装软件需要谁审批", "relevant_contains": ["直属主管审批"], "type": "fact"}
+{"query": "设备丢失后多久内必须上报", "relevant_contains": ["2 小时内上报"], "type": "fact"}
+{"query": "公司数据分为几个等级", "relevant_contains": ["公开、内部、机密、绝密四级"], "type": "fact"}
+{"query": "钓鱼邮件应该转发到哪里", "relevant_contains": ["security@example.com"], "type": "fact"}
+{"query": "高危安全事件多长时间内响应", "relevant_contains": ["高危事件 1 小时内响应"], "type": "fact"}
+{"query": "中危安全事件的响应时限", "relevant_contains": ["中危 4 小时"], "type": "fact"}
+{"query": "机密数据可以发到个人邮箱吗", "relevant_contains": ["禁止通过个人邮箱"], "type": "compare"}
+{"query": "对外提供数据需要哪些审批", "relevant_contains": ["法务双重审批"], "type": "compare"}
+{"query": "公司账号可以多人共用吗", "relevant_contains": ["禁止多人共用"], "type": "compare"}
+{"query": "市内交通费单次上限是多少", "relevant_contains": ["单次不超过 100 元"], "type": "fact"}
+{"query": "高铁一等座哪些人可以坐", "relevant_contains": ["总监及以上职级"], "type": "fact"}
+{"query": "什么情况下可以坐公务舱", "relevant_contains": ["超过 6 小时可乘坐公务舱"], "type": "fact"}
+{"query": "一线城市住宿每晚最多报多少", "relevant_contains": ["一线城市每晚上限 600 元"], "type": "fact"}
+{"query": "二线城市住宿费标准是多少", "relevant_contains": ["二线城市 450 元"], "type": "fact"}
+{"query": "出差补贴一线城市每天多少钱", "relevant_contains": ["一线城市每天 200 元"], "type": "fact"}
+{"query": "紧急出差可以事后补审批吗", "relevant_contains": ["3 个工作日内补审批"], "type": "compare"}
+{"query": "住宿超标的部分怎么处理", "relevant_contains": ["超出标准的部分由个人自理"], "type": "compare"}
+{"query": "报销超过 30 天怎么办", "relevant_contains": ["超期需部门负责人特批"], "type": "compare"}
+{"query": "体检报告最晚什么时候交", "relevant_contains": ["15 天内补交"], "type": "fact"}
+{"query": "试用期是多久", "relevant_contains": ["试用期为 3 个月"], "type": "fact"}
+{"query": "试用期考核由谁负责", "relevant_contains": ["HRBP 共同完成"], "type": "fact"}
+{"query": "试用期考核看哪些维度", "relevant_contains": ["价值观匹配"], "type": "fact"}
+{"query": "新人导师由谁担任", "relevant_contains": ["同组成员担任"], "type": "fact"}
+{"query": "信息安全培训要在多久内完成", "relevant_contains": ["入职 2 周内"], "type": "fact"}
+{"query": "转正申请什么时候提交", "relevant_contains": ["结束前 10 个工作日"], "type": "fact"}
+{"query": "转正后有哪些待遇", "relevant_contains": ["补充医疗保险"], "type": "fact"}
+{"query": "培训重考还没通过会怎么样", "relevant_contains": ["视为不符合录用条件"], "type": "compare"}
+{"query": "试用期考核不通过可以延长吗", "relevant_contains": ["延长试用期一次"], "type": "compare"}
+{"query": "安装主机时四周要留多少空间", "relevant_contains": ["四周保留至少 10 cm"], "type": "fact"}
+{"query": "主机净重是多少", "relevant_contains": ["净重 2.4 kg"], "type": "fact"}
+{"query": "设备能放在潮湿的地方吗", "relevant_contains": ["湿度超过 85%"], "type": "compare"}
+{"query": "电源适配器的型号是什么", "relevant_contains": ["SKU-8823-P"], "type": "fact"}
+{"query": "设备遗失和商品退货的时限分别是多少", "relevant_contains": ["2 小时内上报", "7 天内可无理由退货"], "type": "cross"}
+{"query": "住宿超标和报销超期的处理方式有什么不同", "relevant_contains": ["超出标准的部分由个人自理", "超期需部门负责人特批"], "type": "compare"}
+{"query": "密码锁定和账号遗失上报的时限差多少", "relevant_contains": ["锁定账号 30 分钟", "2 小时内上报"], "type": "compare"}
+{"query": "年假申请和转正申请分别要提前多久", "relevant_contains": ["三个工作日", "结束前 10 个工作日"], "type": "cross"}
+{"query": "试用期员工第一年有年假吗", "relevant_contains": ["入职满一年", "试用期为 3 个月"], "type": "cross"}
+{"query": "食堂几点开饭", "relevant_contains": [], "type": "no_answer"}
+{"query": "公司年会在什么时候举办", "relevant_contains": [], "type": "no_answer"}
+{"query": "停车位怎么申请", "relevant_contains": [], "type": "no_answer"}
+{"query": "员工子女教育补贴标准", "relevant_contains": [], "type": "no_answer"}
+{"query": "竞业限制的补偿金额是多少", "relevant_contains": [], "type": "no_answer"}
+{"query": "公司有没有员工持股计划", "relevant_contains": [], "type": "no_answer"}
