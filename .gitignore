@@ -30,6 +30,13 @@ nul
 web/node_modules/
 web/dist/
 web/.vite/
+.vite/
+web/tsconfig.tsbuildinfo
+
+# 无头浏览器验证临时目录
+.tmp-edge-profile/
+.tmp-edge-profile2/
+.tmp-edge-profile3/
 
 # OS / editor
 .DS_Store
