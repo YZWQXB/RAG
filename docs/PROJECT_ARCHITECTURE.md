@@ -48,7 +48,7 @@ RAG_ai_pro/
 │       ├── reranker/       # api(bge-reranker) / fake
 │       └── storage/        # local(文件系统) / s3(MinIO/OSS)
 ├── worker/                 # 独立进程：outbox 轮询入库 + 定时维护
-├── web/                    # React 18 + Vite 前端
+├── web/                    # React 18 + Vite 前端（含 /settings 成员与授权管理页）
 ├── migrations/             # Alembic 迁移（7 个版本）
 ├── scripts/                # 运维/评测脚本（seed、eval、calibrate、backup）
 ├── tests/                  # unit / integration / isolation / security / eval 五类
@@ -93,6 +93,17 @@ RAG_ai_pro/
 
 关键代码：`app/core/tenant.py`（必须用 `set_config(..., true)` 而非 `SET`，因为 SET 的会话级残留在连接归还后会跨租户泄露）。
 
+### 4.1.1 租户内授权：RBAC + ACL 混合模型（v1.2.0 补全）
+
+隔离解决"空间之间"，授权解决"空间之内"：
+
+- **角色（RBAC）**：`owner / admin / editor / viewer`。owner-admin 是 `FULL_ACCESS_ROLES`（跳过 ACL 全量可见）；editor 可建库但只见被授权的库；viewer 纯只读。
+- **库级授权（ACL）**：`kb_acl` 表三元组 `subject_type(user|role) × subject_id × permission`，权限单向展开 `read ⊂ write ⊂ manage`。
+- **判定唯一入口**：`iam/permissions.py` 的 `require_kb_permission`，其它模块禁止自写角色比较。404（跨租户，防存在性泄露）与 403（同租户无权）语义严格区分。
+- **建库自动授权**（v1.2.0 修复）：创建人自动获得该库的 `manage` ACL——否则 editor 建库即失权（不在 FULL_ACCESS 且 ACL 查空）。
+- **前端管理页**：`web/src/pages/Settings.tsx`（仅 owner/admin 可见）：成员邀请/改角色/移除 + 按人/按角色授权与撤销。
+- **防提权链**：授权入口只收敛在 owner/admin；viewer 自提权实测 403；owner 角色不可被修改。
+
 ### 4.2 检索管道：双路召回 + RRF 融合
 ```
 query → normalize → [稠密召回 pgvector 余弦] ─┐
@@ -100,6 +111,7 @@ query → normalize → [稠密召回 pgvector 余弦] ─┐
 ```
 - 离线模式：稠密通道退化为**字符袋词法打分**（`lexical.py`），不碰向量列
 - 拒答判定 `answerable()`：稠密、稀疏**两路阈值取或**，防"字面命中但语义分低"被误拒
+- **多轮指代消解（v1.2.0）**：追问"它有什么限制"时，改写器把指代补全成可独立检索的问题。三道闸：门控（短句+含指代词才改写）/ 超时（10s 放弃）/ Redis 缓存（hash 键不留原文）；**只在原句检索失败后触发**，常规提问零额外延迟；任何失败回退原句——宁可检索不到，不能检索错（`retrieval/rewrite.py`）
 - RRF：`score = Σ 1/(60+rank)`，无需把两路分数归一化到同一量纲
 
 ### 4.3 生成编排：三段事务策略（SSE 不持连接）
@@ -136,7 +148,7 @@ Phase C 短事务：落助手消息 + 引用 + 用量
    - 事务 A：权限过滤 kb_ids → 配额计数 → 会话/历史 → 落用户消息
    - **事务外**：`embed_cached` 算查询向量（CPU 密集不占连接池）
    - 事务 B：`retrieve()` 双路召回 + RRF + 重排
-   - 若检索无依据 → `maybe_rewrite` 多轮指代消解改写后重试一次
+   - 若检索无依据 → `maybe_rewrite` 多轮指代消解改写后重试一次（v1.2.0：门控+超时+缓存，失败回退原句）
 4. `stream_answer` SSE 事件序列：`citations → token* → done`（或 `no_answer`/`error`）
 5. 空闲超时窗口插入 `: ping` 心跳帧，防 nginx/代理切断
 6. 完成后事务 C：落助手消息 + 引用映射 `extract_citations([n] → 块/页码)` + 用量
@@ -216,24 +228,40 @@ Phase C 短事务：落助手消息 + 引用 + 用量
 - **第 5–6 天 · 检索链路**：`retrieval/` 全目录 + `scripts/calibrate_threshold.py`，理解阈值标定
 - **第 7–8 天 · 入库链路**：`ingestion/pipeline/` 四个文件 + `worker/`，画出状态机
 - **第 9 天 · 生成与前端**：`generation/service.py`（SSE 三段事务）+ `web/src/lib/sse.ts`
-- **第 10 天 · 隔离与安全**：`tenant.py` + `tests/isolation/` + `tests/security/`
+- **第 10 天 · 隔离与安全**：`tenant.py` + `tests/isolation/` + `tests/security/`；跑一遍三角色权限实验（对照 `docs/shots/` 截图），在 `/settings` 页亲手完成"邀请成员→授权→撤销"闭环
 - **第 11–12 天 · 运维面**：`mode.py`、`metrics.py`、`scripts/backup_db.py`、CI
 - **第 13–14 天 · 动手改**：加一个配置项并写测试；给 retrieval 加一路新召回并接进 fusion；写一个运维脚本
 
 ---
 
-## 8. 代码审查结论摘要（2026-11-17）
+## 8. 版本历史与审查结论
 
-总体评价：**高质量代码库**。注释解释"为什么"而非"是什么"；事务边界、超时、重试、降级路径都有显式设计；342 项测试可收集，ruff 全清。
+### v1.2.0（2026-11-18，当前版本）
 
-值得学习的亮点：
+**检索质量**：多轮指代消解查询改写（三道闸：门控/超时/缓存，失败回退原句，仅在原句检索失败后触发）；`eval_rewrite` 评测与 CI 回归。
+
+**权限体系补全**：
+- 修复"editor 建库即失权"缺陷：`create_kb` 现自动给创建人插 `manage` ACL（历史库需回填，SQL 见提交记录）
+- 新增 `/settings` 成员与授权管理页（owner/admin 专属）：邮箱邀请、改角色、移除、按人/按角色授权、撤销
+- 三角色 24 项权限矩阵实测全部通过（证据截图 `docs/shots/`）
+
+**文档**：本架构指南、代码审查报告、11 张权限实测截图。
+
+### 代码审查遗留改进点（下版本候选）
+
+1. **P2 · 月键口径不一致**：`worker/tasks/aggregate.py` 的 `rebuild_usage_counters` 用 UTC `strftime('%Y%m')`，而 `quota/service._month_key` 用业务时区——月底 8 小时窗口内重建计数器会写错月份，当月用量被"清零"。建议统一复用同一个月键函数。
+2. `pyproject.toml` 依赖含 `arq` 但 worker 刻意未用（自研 outbox）——建议移除或注释说明。
+3. `get_llm_provider()` / `get_reranker_provider()` 每次调用 new 新实例——当前轻量可接受；若未来 provider 持有连接池需加实例缓存。
+4. `web/src/lib/sse.ts` 对多行 `data:` 用隐式拼接（SSE 规范应按 \n 连接）；当前后端单行 JSON 输出，不受影响。
+
+### 审查认可的核心亮点（学习优先级最高）
+
 - 事务级 RLS 绑定 + commit 后重绑（`runner._commit_and_rebind`）
 - SSE 心跳用生产者+队列而非直接 async for（防代理空闲断连）
-- 查询改写的三道闸（门控/超时/缓存）+ 失败一律回退原句
-- 生产护栏直接在配置层拦截（fake provider / local storage）
+- 查询改写三道闸 + 失败一律回退原句
+- 生产护栏在配置层拦截（fake provider / local storage / 默认 SECRET）
+- 令牌只证明"曾是成员"——每请求复核成员关系，移除即失效
 
-发现的改进点（均为低风险）：
-1. `worker/tasks/aggregate.py` 的 `rebuild_usage_counters` 用 UTC `strftime('%Y%m')` 算月键，而 `quota/service._month_key` 用业务时区——**两处月键口径不一致**，月底 8 小时窗口内重建的计数器会写错月份。建议统一调用同一个月键函数。
-2. `pyproject.toml` 依赖里含 arq 但 worker 刻意未用（自研 outbox）——建议移除依赖或注释说明，减少误解。
-3. `get_llm_provider()` / `get_reranker_provider()` 每次调用都 new 新实例——当前对象轻量可接受；若未来 provider 持有连接池可加缓存。
-4. `web/src/lib/sse.ts` 的 dispatch 对多行 `data:` 用隐式字符串拼接，SSE 规范允许 data 多行；当前后端单行 JSON 输出，不受影响。
+---
+
+> 文档对应版本：v1.2.0（提交 ab04984，2026-11-18）。后续大改动请同步更新第 4 节架构决策与第 8 节版本历史。
