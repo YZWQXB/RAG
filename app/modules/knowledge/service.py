@@ -9,7 +9,7 @@ from app.core.errors import BadRequestError, PermissionDeniedError
 from app.core.security import Principal
 from app.modules.audit import service as audit
 from app.modules.iam.permissions import Action, filter_readable_kbs, require_kb_permission
-from app.modules.knowledge.models import DEFAULT_CHUNK_CONFIG, KnowledgeBase
+from app.modules.knowledge.models import DEFAULT_CHUNK_CONFIG, KbAcl, KnowledgeBase
 from app.modules.knowledge.repository import KnowledgeBaseRepository
 from app.modules.knowledge.schemas import KbCreate, KbOut, KbUpdate
 
@@ -52,6 +52,20 @@ async def create_kb(session: AsyncSession, principal: Principal, payload: KbCrea
         updated_at=datetime.now(UTC),
     )
     session.add(kb)
+    await session.flush()
+    # 创建人未必是 owner/admin（editor 也能建库），而 editor 不在 FULL_ACCESS_ROLES 里，
+    # 没有这条 ACL，创建人对自己刚建的库连 WRITE 都没有——建库即失权的悖论。
+    # 显式授予 manage，保证创建人可以管理自己的库（含后续授权他人）。
+    session.add(
+        KbAcl(
+            id=uuid.uuid4(),
+            tenant_id=principal.tenant_id,
+            kb_id=kb.id,
+            subject_type="user",
+            subject_id=str(principal.user_id),
+            permission="manage",
+        )
+    )
     await session.flush()
     await audit.record(
         session,

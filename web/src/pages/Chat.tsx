@@ -60,6 +60,8 @@ export function Chat() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [citations, setCitations] = useState<Citation[]>([]);
+  // 后端做了指代消解时带上改写后的查询，让用户知道检索用的是什么
+  const [rewrittenQuery, setRewrittenQuery] = useState<string | null>(null);
   const [activeCitation, setActiveCitation] = useState<number | null>(null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -113,6 +115,8 @@ export function Chat() {
   const openConversation = async (id: string) => {
     setConversationId(id);
     setError("");
+    // 历史消息不带改写信息，切换会话时必须清掉上一条回答留下的提示
+    setRewrittenQuery(null);
     try {
       const history = await api.get<RemoteMessage[]>(`/api/v1/conversations/${id}/messages`);
       setMessages(
@@ -190,7 +194,10 @@ export function Chat() {
           ...(conversationId ? { conversation_id: conversationId } : {}),
         },
         {
-          onCitations: (list) => setCitations(list),
+          onCitations: (list, meta) => {
+            setCitations(list);
+            setRewrittenQuery(meta.rewrittenQuery);
+          },
           onToken: (text) =>
             setMessages((prev) =>
               prev.map((item) =>
@@ -322,6 +329,7 @@ export function Chat() {
               setConversationId(null);
               setMessages([]);
               setCitations([]);
+              setRewrittenQuery(null);
             }}
             className="w-full rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
           >
@@ -457,6 +465,13 @@ export function Chat() {
             onRegenerate={() => void send(lastQuery)}
             feedback={feedback}
           />
+          {rewrittenQuery ? (
+            <div className="px-4 pb-3">
+              <span className="inline-block rounded bg-zinc-100 px-2 py-1 text-[11px] text-zinc-500">
+                已结合上文改写检索：{rewrittenQuery}
+              </span>
+            </div>
+          ) : null}
           <div ref={bottomRef} />
         </div>
 

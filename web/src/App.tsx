@@ -6,6 +6,7 @@ import { KbList } from "./pages/KbList";
 import { Login } from "./pages/Login";
 import { Quota } from "./pages/Quota";
 import { Register } from "./pages/Register";
+import { Settings } from "./pages/Settings";
 import { ModeBadge } from "./components/ModeBadge";
 import { clearToken, getTenant, getToken } from "./lib/auth";
 
@@ -30,6 +31,11 @@ function Shell() {
             <Link to="/quota" className="hover:text-zinc-900">
               额度
             </Link>
+            {tenant?.role === "owner" || tenant?.role === "admin" ? (
+              <Link to="/settings" className="hover:text-zinc-900">
+                成员与授权
+              </Link>
+            ) : null}
           </nav>
         </div>
         <div className="flex items-center gap-3 text-sm text-zinc-600">
@@ -69,6 +75,7 @@ export function App() {
           <Route path="/kbs/:kbId/documents" element={<KbDocuments />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/quota" element={<Quota />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/kbs" replace />} />
       </Routes>

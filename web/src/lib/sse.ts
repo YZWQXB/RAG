@@ -10,7 +10,7 @@ export type Citation = {
 };
 
 export type StreamHandlers = {
-  onCitations?: (citations: Citation[]) => void;
+  onCitations?: (citations: Citation[], meta: { rewrittenQuery: string | null }) => void;
   onToken?: (text: string) => void;
   onNoAnswer?: (message: string) => void;
   onDone?: (payload: { message_id: string; conversation_id?: string; used_citations: number[] }) => void;
@@ -94,7 +94,9 @@ function dispatch(rawEvent: string, handlers: StreamHandlers): void {
 
   switch (eventName) {
     case "citations":
-      handlers.onCitations?.(payload.citations ?? []);
+      handlers.onCitations?.(payload.citations ?? [], {
+        rewrittenQuery: payload.rewritten_query ?? null,
+      });
       break;
     case "token":
       handlers.onToken?.(payload.t ?? "");
