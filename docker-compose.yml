@@ -56,6 +56,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        EMBEDDING_LOCAL: ${EMBEDDING_LOCAL:-0}
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://rag_app:rag_app_pw@postgres:5432/rag
@@ -63,6 +65,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       STORAGE_LOCAL_DIR: /data/storage
+      # 容器内路径与上方 /models 挂载对应；宿主机 .env 里的 Windows 路径仅对开发模式有效
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL_CONTAINER:-/models/models/BAAI--bge-m3/snapshots/master}
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,12 +76,17 @@ services:
       - "8000:8000"
     volumes:
       - appdata:/data
+      # 本地向量模式：把宿主机下载好的 bge-m3 权重只读挂进容器，
+      # 路径与 .env 的 EMBEDDING_MODEL 对应（Windows 路径写法见 README）
+      - ./data/models:/models:ro
     restart: unless-stopped
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        EMBEDDING_LOCAL: ${EMBEDDING_LOCAL:-0}
     command: ["python", "-m", "worker.main"]
     env_file: .env
     environment:
@@ -86,11 +95,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       STORAGE_LOCAL_DIR: /data/storage
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL_CONTAINER:-/models/models/BAAI--bge-m3/snapshots/master}
     depends_on:
       api:
         condition: service_started
     volumes:
       - appdata:/data
+      - ./data/models:/models:ro
     restart: unless-stopped
 
   web:

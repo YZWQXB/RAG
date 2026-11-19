@@ -94,7 +94,7 @@ def create_app() -> FastAPI:
     import app.core.registry  # noqa: F401  确保所有 ORM 模型已注册
     from app.api.v1 import api_router
 
-    app = FastAPI(title="RAG SaaS", version="1.1.0", lifespan=lifespan)
+    app = FastAPI(title="RAG SaaS", version="1.2.0", lifespan=lifespan)
     app.add_middleware(TraceMiddleware)
     register_exception_handlers(app)
     app.include_router(api_router, prefix="/api/v1")

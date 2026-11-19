@@ -13,7 +13,11 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+# EMBEDDING_LOCAL=1 时安装本地向量依赖（torch 等，约 2.5GB）。
+# 默认不装：只调远程 embedding API 的部署不需要为此付出镜像体积。
+# 构建示例：docker compose build --build-arg EMBEDDING_LOCAL=1 api worker
+ARG EMBEDDING_LOCAL=0
+RUN if [ "$EMBEDDING_LOCAL" = "1" ]; then uv sync --frozen --no-dev --extra local-embedding; else uv sync --frozen --no-dev; fi
 
 COPY app ./app
 COPY worker ./worker
