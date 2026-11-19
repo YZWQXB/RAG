@@ -53,6 +53,19 @@ type Props = {
   onCitationClick: (index: number) => void;
 };
 
+/**
+ * 压缩无效空行：LLM 输出常带 3+ 连续换行，Markdown 会把每个空行段渲染成
+ * 空段落 + whitespace-pre-wrap 原样保留，堆出大片空白。
+ * 规则：行首/行尾空白行清掉；3+ 连续换行压成 1 个空行（保留段落间隔语义）。
+ */
+function collapseBlankLines(text: string): string {
+  return text
+    .replace(/[ \t]+(\r?\n)+[ \t]+/g, (_all, nl) => nl) // 全空白行压成单个换行
+    .replace(/(\r?\n){3,}/g, "\n\n") // 3+ 换行压成段间空行
+    .replace(/^\s+/, "")
+    .replace(/\s+$/, "");
+}
+
 /** 面向阅读的排版：标题、列表、代码块、表格、引用块、链接都按知识库问答场景调过间距。 */
 const BASE_CLASSES =
   "text-sm leading-relaxed text-zinc-900 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0";
@@ -61,7 +74,8 @@ const BASE_CLASSES =
  * remarkCjkFriendly：中文里 `**加粗：**正文` 这种写法按 CommonMark 不算强调
  * （闭合符前是中文标点、后是汉字，不满足 right-flanking），不加这个插件会显示成字面 **。
  */
-export function Markdown({ content, onCitationClick }: Props) {
+export function Markdown({ content: raw, onCitationClick }: Props) {
+  const content = collapseBlankLines(raw);
   const components: Components = {
     h1: ({ children }) => (
       <h2 className="mb-2 mt-4 text-base font-semibold text-zinc-900">{children}</h2>

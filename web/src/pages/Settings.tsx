@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert } from "../components/Alert";
-import { FormField } from "../components/FormField";
 import { ApiError, api } from "../lib/api";
 import { getAuthClaims, getTenant } from "../lib/auth";
 import type { Kb } from "./KbList";
@@ -286,16 +285,20 @@ export function Settings() {
               </tbody>
             </table>
 
-            <form onSubmit={invite} className="mt-4 flex items-end gap-2 border-t border-zinc-100 pt-4">
+            <form onSubmit={invite} className="mt-4 border-t border-zinc-100 pt-4">
+              <div className="flex items-end gap-2">
               <div className="flex-1">
-                <FormField
-                  label="邀请成员（输入已注册邮箱）"
+                <label className="mb-1 block text-sm text-zinc-700">邀请成员（输入已注册邮箱）</label>
+                <input
                   type="email"
                   value={inviteEmail}
-                  error={inviteError}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="colleague@example.com"
+                  className={`w-full rounded-md border px-3 py-2 text-sm outline-none transition ${
+                    inviteError ? "border-red-600" : "border-zinc-300 focus:border-blue-600"
+                  }`}
                 />
+                {inviteError ? <p className="mt-1 text-xs text-red-700">{inviteError}</p> : null}
               </div>
               <div className="w-32">
                 <label className="mb-1 block text-sm text-zinc-700">角色</label>
@@ -318,6 +321,7 @@ export function Settings() {
               >
                 {inviting ? "添加中…" : "添加"}
               </button>
+              </div>
             </form>
             <p className="mt-1 text-xs text-zinc-500">
               对方需已注册（任意空间均可）；viewer 只读、editor 可上传文档、admin 可帮你管理成员与授权。
@@ -388,13 +392,18 @@ export function Settings() {
                           </div>
                           <div className="flex-1">
                             {aclSubjectType === "user" ? (
-                              <FormField
-                                label="成员邮箱（须已加入本空间）"
-                                type="email"
-                                value={aclSubjectId}
-                                onChange={(e) => setAclSubjectId(e.target.value)}
-                                placeholder="colleague@example.com"
-                              />
+                              <div>
+                                <label className="mb-1 block text-xs text-zinc-700">成员邮箱（须已加入本空间）</label>
+                                <input
+                                  type="email"
+                                  value={aclSubjectId}
+                                  onChange={(e) => setAclSubjectId(e.target.value)}
+                                  placeholder="colleague@example.com"
+                                  className={`w-full rounded-md border px-2 py-2 text-sm outline-none transition ${
+                                    aclError ? "border-red-600" : "border-zinc-300 focus:border-blue-600"
+                                  }`}
+                                />
+                              </div>
                             ) : (
                               <div>
                                 <label className="mb-1 block text-xs text-zinc-700">角色</label>

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Alert } from "../components/Alert";
 import { DocStatusBadge } from "../components/DocStatusBadge";
 import { usePolling } from "../hooks/usePolling";
 import { ApiError, api } from "../lib/api";
+import { getTenant } from "../lib/auth";
 
 type Doc = {
   id: string;
@@ -25,6 +26,8 @@ function formatSize(bytes: number): string {
 
 export function KbDocuments() {
   const { kbId = "" } = useParams();
+  const navigate = useNavigate();
+  const isManager = getTenant()?.role === "owner" || getTenant()?.role === "admin";
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [error, setError] = useState("");
   const [uploadError, setUploadError] = useState("");
@@ -74,6 +77,16 @@ export function KbDocuments() {
     }
   };
 
+  const removeKb = async () => {
+    if (!window.confirm("删除后该知识库及其全部文档不再参与检索（数据软删除），确定删除？")) return;
+    try {
+      await api.del(`/api/v1/kbs/${kbId}`);
+      navigate("/kbs", { replace: true });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "删除知识库失败，请稍后重试");
+    }
+  };
+
   const remove = async (docId: string) => {
     if (!window.confirm("删除后该文档不再参与检索，确定删除？")) return;
     try {
@@ -92,6 +105,15 @@ export function KbDocuments() {
         </Link>
         <span className="text-zinc-400">/</span>
         <h1 className="text-base font-medium text-zinc-900">文档管理</h1>
+        {isManager ? (
+          <button
+            type="button"
+            onClick={() => void removeKb()}
+            className="ml-auto text-xs text-red-600 underline"
+          >
+            删除知识库
+          </button>
+        ) : null}
       </div>
 
       {error ? <Alert tone="error">{error}</Alert> : null}
