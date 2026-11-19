@@ -444,6 +444,11 @@ export function Settings() {
                             {aclSubmitting ? "保存中…" : "授权"}
                           </button>
                         </div>
+                        {aclPermission === "manage" ? (
+                          <p className="mt-2 text-xs text-amber-700">
+                            ⚠️ 可管理包含 <b>删除知识库</b> 与修改授权，请确认对方可信。
+                          </p>
+                        ) : null}
                         {aclError ? <p className="mt-2 text-xs text-red-700">{aclError}</p> : null}
                       </form>
                     ) : null}

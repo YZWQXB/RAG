@@ -61,7 +61,7 @@ type Props = {
 function collapseBlankLines(text: string): string {
   return text
     .replace(/[ \t]+(\r?\n)+[ \t]+/g, (_all, nl) => nl) // 全空白行压成单个换行
-    .replace(/(\r?\n){3,}/g, "\n\n") // 3+ 换行压成段间空行
+    .replace(/(\r?\n){2,}/g, "\n\n") // 2+ 连续换行统一为段间空行（LLM 常连发空行）
     .replace(/^\s+/, "")
     .replace(/\s+$/, "");
 }
@@ -89,12 +89,13 @@ export function Markdown({ content: raw, onCitationClick }: Props) {
     h4: ({ children }) => (
       <h5 className="mb-1.5 mt-3 text-sm font-medium text-zinc-800">{children}</h5>
     ),
-    p: ({ children }) => <p className="my-2 whitespace-pre-wrap break-words">{children}</p>,
+    // pre-line：保留段内软换行，但折叠连续空白——LLM 输出的多余空行不再撑出大片空白
+    p: ({ children }) => <p className="my-1.5 whitespace-pre-line break-words">{children}</p>,
     ul: ({ children }) => (
-      <ul className="my-2 list-disc space-y-1 pl-5 marker:text-zinc-400">{children}</ul>
+      <ul className="my-1.5 list-disc space-y-0.5 pl-5 marker:text-zinc-400">{children}</ul>
     ),
     ol: ({ children }) => (
-      <ol className="my-2 list-decimal space-y-1 pl-5 marker:text-zinc-400">{children}</ol>
+      <ol className="my-1.5 list-decimal space-y-0.5 pl-5 marker:text-zinc-400">{children}</ol>
     ),
     li: ({ children }) => <li className="break-words">{children}</li>,
     strong: ({ children }) => (
